@@ -1,7 +1,6 @@
 import logging
 import json
 import pytz
-import qrcode
 import base64
 import aiohttp
 import asyncio
@@ -22,7 +21,7 @@ from .const import DOMAIN, BATTERY_LEVELS, CONF_ACTIVE_MODE_SMARTTAGS, CONF_ACTI
 _LOGGER = logging.getLogger(__name__)
 
 URL_PRE_SIGNIN = 'https://account.samsung.com/accounts/v1/FMM2/signInGate?state={state}&redirect_uri=https:%2F%2Fsmartthingsfind.samsung.com%2Flogin.do&response_type=code&client_id=ntly6zvfpn&scope=iot.client&locale=de_DE&acr_values=urn:samsungaccount:acr:basic&goBackURL=https:%2F%2Fsmartthingsfind.samsung.com%2Flogin'
-URL_QR_CODE_SIGNIN = 'https://account.samsung.com/api/v1/signin/auths/qrcodes'
+URL_QR_CODE_SIGNIN = 'https://account.samsung.com/accounts/v1/FMM2/signInWithQrCode'
 URL_SIGNIN_XHR = 'https://account.samsung.com/accounts/v1/FMM2/signInXhr'
 URL_QR_POLL = 'https://account.samsung.com/accounts/v1/FMM2/signInWithQrCodeProc'
 URL_SIGNIN_SUCCESS = 'https://account.samsung.com{next_url}'
@@ -286,6 +285,7 @@ async def fetch_csrf(hass: HomeAssistant, session: aiohttp.ClientSession, entry_
         _LOGGER.error(err_msg, exc_info=True)
 
     raise ConfigEntryAuthFailed(err_msg)
+
 
 async def get_devices(hass: HomeAssistant, session: aiohttp.ClientSession, entry_id: str) -> list:
     """
