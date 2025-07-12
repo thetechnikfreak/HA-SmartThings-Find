@@ -221,29 +221,71 @@ async def fetch_csrf(hass: HomeAssistant, session: aiohttp.ClientSession, entry_
     Args:
         hass (HomeAssistant): Home Assistant instance.
         session (aiohttp.ClientSession): The current session.
+        entry_id (str): The config entry ID.
 
     Raises:
         ConfigEntryAuthFailed: If the CSRF token is not found or if the authentication fails.
     """
     err_msg = ""
-    async with session.get(URL_GET_CSRF) as response:
-        if response.status == 200:
-            csrf_token = response.headers.get("_csrf")
-            if csrf_token:
-                hass.data[DOMAIN][entry_id]["_csrf"] = csrf_token
-                _LOGGER.info("Successfully fetched new CSRF Token")
-                return
+    try:
+        headers = {
+            "accept": "application/json, text/plain, */*",
+            "accept-language": "de-DE,de;q=0.9,en-US;q=0.8,en;q=0.7",
+            "sec-fetch-dest": "empty",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-site": "same-origin",
+            "referer": "https://smartthingsfind.samsung.com/"
+        }
+        async with session.get(URL_GET_CSRF, headers=headers) as response:
+            if response.status == 200:
+                try:
+                    # Try to parse as JSON first since the API should return JSON
+                    response_json = await response.json()
+                    _LOGGER.debug(f"CSRF response JSON: {response_json}")
+                    
+                    # Extract CSRF token from JSON response
+                    csrf_token = response_json.get('_csrf', {}).get('token') if isinstance(response_json.get('_csrf'), dict) else response_json.get('_csrf')
+                    
+                    if csrf_token:
+                        hass.data[DOMAIN][entry_id]["_csrf"] = csrf_token
+                        _LOGGER.info("Successfully fetched new CSRF Token")
+                        return
+                    else:
+                        err_msg = f"CSRF token not found in JSON response: {response_json}"
+                        _LOGGER.error(err_msg)
+                        
+                except json.JSONDecodeError:
+                    # If JSON parsing fails, fall back to text response
+                    response_text = await response.text()
+                    _LOGGER.debug(f"CSRF response text (not JSON): {response_text}")
+                    
+                    # Check if it's a simple fail response
+                    if response_text.strip() == 'fail':
+                        err_msg = "Authentication failed - received 'fail' response. Session may be invalid."
+                        _LOGGER.error(err_msg)
+                    else:
+                        # Try to extract CSRF token from text response
+                        csrf_match = re.search(r'_csrf["\']?\s*[:=]\s*["\']?([^"\'>\s]+)', response_text)
+                        if csrf_match:
+                            csrf_token = csrf_match.group(1)
+                            hass.data[DOMAIN][entry_id]["_csrf"] = csrf_token
+                            _LOGGER.info("Successfully fetched new CSRF Token from text response")
+                            return
+                        else:
+                            err_msg = f"CSRF token not found in text response: {response_text[:500]}"
+                            _LOGGER.error(err_msg)
             else:
-                err_msg = f"CSRF token not found in response headers. Status Code: {response.status}, Response: '{await response.text()}'"
+                response_text = await response.text()
+                err_msg = f"Failed to authenticate with SmartThings Find: [{response.status}]: {response_text}"
                 _LOGGER.error(err_msg)
-        else:
-            err_msg = f"Failed to authenticate with SmartThings Find: [{response.status}]: {await response.text()}"
-            _LOGGER.error(err_msg)
 
-        _LOGGER.debug(f"Headers: {response.headers}")
+            _LOGGER.debug(f"Headers: {response.headers}")
+
+    except Exception as e:
+        err_msg = f"Exception occurred while fetching CSRF token: {e}"
+        _LOGGER.error(err_msg, exc_info=True)
 
     raise ConfigEntryAuthFailed(err_msg)
-
 
 async def get_devices(hass: HomeAssistant, session: aiohttp.ClientSession, entry_id: str) -> list:
     """
